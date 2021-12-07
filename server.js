@@ -20,10 +20,24 @@ let events = [
   { description: 'Random event 3', date: moment('2021-12-26', 'YYYY-MM-DD') }
 ];
 
+let renderer;
+
 app.get('/', (req, res) => {
   let template = fs.readFileSync(path.resolve('./index.html'), 'utf-8');
   let contentMarker='<!--APP-->';
-  res.send(template.replace(contentMarker,`<script>var __INITIAL_STATE__=${serialize(events)}</script>`));
+  if (renderer) {
+  renderer.renderToString({events}, (err, html) => {
+    if (err) {
+      console.log(err);
+    } else {
+       res.send(template.replace(contentMarker, `<script>var __INITIAL_STATE__ = ${ serialize(events) }</script>\n${html}`));
+      // console.log(html);
+    }
+  });
+}else {
+  res.send('<p>Awaiting compilation..</p><script src="/reload/reload.js"></script>');
+}
+  // res.send(template.replace(contentMarker,`<script>var __INITIAL_STATE__=${serialize(events)}</script>`));
 
 });
 // let events=[];
@@ -32,7 +46,10 @@ app.get('/', (req, res) => {
 app.use(require('body-parser').json())
 app.post('/add_event',(req, res) => {
   console.log('Received Axios',req.body)//Incoming request
-  events.push(req.body);
+  events.push({
+    description: req.body.description,
+    date: moment(req.body.date)
+  });
   res.sendStatus(200)
 });
 
@@ -42,6 +59,17 @@ if (process.env.NODE_ENV === 'development') {
   const reload = require('reload');
   const reloadServer = reload(app);
   require('./webpack-dev-middleware').init(app);
+  require('./webpack-server-compiler').init(function(bundle) {
+
+    let needsReload = (renderer === undefined);
+    renderer = require('vue-server-renderer').createBundleRenderer(bundle);
+    if (needsReload) {
+      reloadServer.reload();
+    }
+
+    // renderer = require('vue-server-renderer').createBundleRenderer(bundle);
+    // console.log('bundle')
+  });
 }
 
 server.listen(process.env.PORT, function () {
